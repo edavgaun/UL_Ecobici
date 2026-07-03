@@ -62,6 +62,15 @@ def obtener_datos_ecobici():
     tabla_final["Operativa"] = tabla_final["Operativa"].map(
         {1: "Sí", 0: "No"}
     )
+    
+    # -------------------------------------------------
+    # NUEVO: Cálculo del porcentaje de disponibilidad
+    # -------------------------------------------------
+    # Evitamos división por cero si alguna capacidad total viene en 0
+    tabla_final["%_Disponibilidad"] = (tabla_final["Bicis_Disponibles"] / tabla_final["Capacidad_Total"].replace(0, 1)) * 100
+    
+    # Creamos una columna de texto con formato "%" para el hover
+    tabla_final["Porcentaje_Texto"] = tabla_final["%_Disponibilidad"].round(1).astype(str) + "%"
 
     return tabla_final
 
@@ -87,9 +96,9 @@ solo_con_bicis = st.sidebar.checkbox("Mostrar solo estaciones con bicicletas dis
 
 # Aplicar el filtro condicionalmente basado en el estado del checkbox
 if solo_con_bicis:
-    df_filtrado = df_ecobici[df_ecobici["Bicis_Disponibles"] > 0]
+    df_filtrado = df_ecobici[df_ecobici["Bicis_Disponibles"] > 0].copy()
 else:
-    df_filtrado = df_ecobici
+    df_filtrado = df_ecobici.copy()
 
 # =====================================================
 # Métricas (Basadas en los datos filtrados)
@@ -116,22 +125,27 @@ with col3:
     )
 
 # =====================================================
-# Mapa (Cambiado a df_filtrado)
+# Mapa (Modificado para mostrar Porcentajes)
 # =====================================================
 
+# Paleta secuencial sugerida: 'YlGnBu' (Amarillo-Verde-Azul) o 'Blues', 'Viridis', etc.
+# Cambiar 'color' a '%_Disponibilidad' y definir rango de 0 a 100
 fig = px.scatter_mapbox(
     df_filtrado,
     lat="Latitud",
     lon="Longitud",
     hover_name="Nombre",
-    color="Bicis_Disponibles",          # El color cambia según la cantidad de bicis
-    size="Bicis_Disponibles",           # El tamaño del círculo crece si hay más bicis
-    color_continuous_scale=px.colors.sequential.Viridis, # Escala de colores vistosa
-    size_max=15,                        # Tamaño máximo del círculo
+    color="%_Disponibilidad",               # El color ahora depende del porcentaje real (0-100)
+    size="Capacidad_Total",                 # El tamaño representa la capacidad total de la estación
+    color_continuous_scale=px.colors.sequential.YlGnBu, # Paleta secuencial muy clara para mapas
+    range_color=[0, 100],                   # Forzamos la barra a ir de 0% a 100%
+    size_max=12,                            # Control del tamaño de los círculos
     hover_data={
-        "Bicis_Disponibles": True,
-        "Puertos_Libres": True,
+        "Porcentaje_Texto": True,           # Mostramos la etiqueta formateada como "XX.X%"
+        "Bicis_Disponibles": True,          # Valor nominal
+        "Puertos_Libres": True,             # Valor nominal
         "Capacidad_Total": True,
+        "%_Disponibilidad": False,          # Ocultamos la numérica cruda para que no se duplique
         "Latitud": False,
         "Longitud": False
     },
@@ -139,9 +153,19 @@ fig = px.scatter_mapbox(
     height=700
 )
 
+# Cambiar los títulos de la barra de colores (Colorbar) y Hover
 fig.update_layout(
     mapbox_style="open-street-map",
-    margin={"r":0, "t":0, "l":0, "b":0}
+    margin={"r":0, "t":0, "l":0, "b":0},
+    coloraxis_colorbar=dict(
+        title="Disponibilidad (%)",
+        ticksuffix="%"
+    )
+)
+
+# Renombrar los labels visibles en la ventanita flotante (Hover)
+fig.update_traces(
+    hovertemplate="<b>%{hovertext}</b><br><br>Disponibilidad: %{customdata[0]}<br>Bicis Disponibles: %{customdata[1]}<br>Puertos Libres: %{customdata[2]}<br>Capacidad Total: %{customdata[3]}<extra></extra>"
 )
 
 st.plotly_chart(
@@ -155,7 +179,13 @@ st.plotly_chart(
 
 st.subheader("Datos de las estaciones")
 
+# Mostramos columnas más ordenadas y limpias en el DataFrame
+columnas_visibles = [
+    "ID", "Nombre", "Bicis_Disponibles", "Puertos_Libres", 
+    "Capacidad_Total", "Porcentaje_Texto", "Operativa"
+]
+
 st.dataframe(
-    df_filtrado,
+    df_filtrado[columnas_visibles].rename(columns={"Porcentaje_Texto": "% Disponibilidad"}),
     use_container_width=True
 )
